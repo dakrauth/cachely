@@ -11,7 +11,12 @@ if os.path.exists(readme):
     with open(readme, 'r') as f:
         long_description = f.read()
 
-VERSION = __import__('cachely').get_version()
+
+about = {}
+with open(os.path.join('cachely/__version__.py')) as f:
+    exec(f.read(), about)
+
+VERSION = about['__version__']
 
 setup(
     name='cachely',
