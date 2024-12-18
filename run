@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+set -o errexit
+set -o pipefail
+TIMEFORMAT="Task completed in %3lR"
+
+function lint {
+    ruff check cachely
+}
+
+function check {
+    ruff format --check cachely
+}
+
+function format {
+    ruff format cachely
+}
+
+function test {
+    pytest tests
+}
+
+function help {
+    echo "Options:"
+    echo "    lint:   Linter"
+    echo "    check:  Formatting checks"
+    echo "    format: Run formatter"
+    echo "    test:   Execute tests"
+}
+
+if [ -z "$1" ]; then
+    help
+else
+    what=$1
+    shift
+    time ${what:-help} "$@"
+fi 

@@ -1,2 +1,3 @@
-from .cache import cachely
-from .loader import Loader
+import logging
+
+logger = logging.getLogger(__package__)

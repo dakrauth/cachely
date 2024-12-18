@@ -1,71 +1,82 @@
 import os
-import logging
 import sqlite3
+import contextlib
 from datetime import datetime
 
-from .. import utils
-from .base import CacheBaseHandler, CacheEntry
+from .base import CacheHandler
 
-logger = logging.getLogger(__name__)
+LIST = "SELECT `id`, `name`, `content`, `date` FROM `cachely` ORDER BY `date`"
+EXISTS = "SELECT exists(SELECT 1 FROM `cachely` WHERE `name`=?) as it_exists"
+READ = "SELECT `id`, `name`, `content`, `date` FROM `cachely` WHERE `name` = ?"
+WRITE = "INSERT INTO `cachely` VALUES (NULL, ?, ?, ?)"
+DELETE_BY_NAME = "DELETE FROM `cachely` where `name`=?"
+DELETE_BY_ID = "DELETE FROM `cachely` where `id`=?"
+CREATE = """
+    CREATE TABLE IF NOT EXISTS `cachely` (
+        `id`    INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        `name`  TEXT NOT NULL,
+        `content`   BLOB NOT NULL,
+        `date`  INTEGER NOT NULL
+    )"""
 
 
-class CacheDbHandler(CacheBaseHandler):
+class CacheDbHandler(CacheHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        filename = kwargs.get("filename") or os.getenv("CACHELY_DBNAME", "cachely.db")
+        self.filename = self.base_dir / filename
 
-    def __init__(self, *args, **kws):
-        super().__init__(*args, **kws)
-        self.filename = os.path.join(
-            self.base_dir,
-            kws.get('filename', os.environ.get('CACHELY_DBNAME', 'cachely.db'))
-        )
+    @contextlib.contextmanager
+    def db(self, commit=False):
+        exists = self.filename.exists()
+        parent = self.filename.parent
+        if not parent.exists():
+            parent.mkdir(parents=True)
 
-    @property
-    def db(self):
         db = sqlite3.connect(self.filename)
-        cursor = db.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS `cachely` (
-                `id`    INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                `name`  TEXT NOT NULL,
-                `date`  INTEGER NOT NULL,
-                `content`   BLOB NOT NULL
-            )
-        ''')
+        if not exists:
+            cursor = db.cursor()
+            cursor.execute(CREATE)
+            db.commit()
+        try:
+            yield db
+        finally:
+            if commit:
+                db.commit()
 
-        return db
+            db.close()
+
+    def invalidate(self, url):
+        e = None
+        with self.db() as db:
+            row = db.execute(READ, (url,)).fetchone()
+            if row:
+                e = self._cache_entry(row)
+                if self.is_expired(e.date):
+                    self.delete(url)
+                    e = None
+
+        return e
+
+    def _cache_entry(self, row):
+        id, name, content, date = row
+        return self.CacheEntry(id, name, content, datetime.fromtimestamp(date), len(content))
 
     def listing(self):
-        return [
-            CacheEntry(name, len(content), datetime.fromtimestamp(date))
-            for name, content, date in self.db.cursor().execute('''
-                SELECT `name`, `content`, `date`
-                FROM `cachely`
-                ORDER BY `date`
-            ''')
-        ]
+        with self.db() as db:
+            return [self._cache_entry(row) for row in db.execute(LIST)]
 
+    def get(self, url):
+        e = self.invalidate(url)
+        return e.content if e else None
 
-    def exists(self, url):
-        row = self.db.cursor().execute(
-            '''SELECT COUNT(`name`) FROM `cachely` WHERE `name` = ?''',
-            (url,)
-        ).fetchone()
-        return bool(row[0])
+    def set(self, url, data):
+        with self.db(commit=True) as db:
+            db.cursor().execute(WRITE, (url, data, int(datetime.now().timestamp())))
 
-    def read(self, url):
-        row = self.db.cursor().execute(
-            '''SELECT `content` FROM `cachely` WHERE `name` = ?''',
-            (url,)
-        ).fetchone()
-        if row:
-            return row[0].decode()
+        return data
 
-
-    def write(self, url, data):
-        db = self.db
-        db.cursor().execute(
-            '''INSERT INTO `cachely` VALUES (NULL, ?, ?, ?)''',
-            (url, int(datetime.now().timestamp()), data)
-        )
-        db.commit()
-        db.close()
-
+    def delete(self, url):
+        sql = DELETE_BY_ID if url.isdigit() else DELETE_BY_NAME
+        with self.db(commit=True) as db:
+            db.cursor().execute(sql, (url,))

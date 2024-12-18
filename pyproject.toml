@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cachely"
+dynamic = ["version"]
+description = ""
+license = { file = "LICENSE" }
+readme = { file = "README.rst", content-type = "text/x-rst" }
+keywords = ["cache", "cli"]
+authors = [
+    { name = "David Krauth", email = "dakrauth@gmail.com" },
+]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Utilities",
+]
+
+dependencies = ["requests", "platformdirs"]
+
+[project.urls]
+Homepage = "https://github.com/dakrauth/cachely"
+
+[project.optional-dependencies]
+dev = [
+    "build",
+    "ipython",
+    "ipdb",
+    "twine",
+    "ruff",
+    "pytest",
+    "responses",
+]
+
+[project.scripts]
+cachely = "cachely.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["cachely*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "cachely.__version__.__version__"}
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+[tool.ruff.lint]
+ignore = ["E741"]
